@@ -8,9 +8,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/ogier/pflag"
 )
+
+const VERSION = "1.0"
 
 const (
 	CHARComment byte = 35
@@ -18,6 +22,12 @@ const (
 	ESCChar2    byte = 96
 	LT          byte = 60
 	GT          byte = 62
+)
+
+var (
+	cVersion    = pflag.BoolP("version", "v", false, "Show version information")
+	cScriptPath = pflag.StringP("script-path", "s", "", "The path to the PowerShell script file.")
+	cOutputPath = pflag.StringP("output-path", "o", "", "The path to the output file including name.")
 )
 
 var (
@@ -30,6 +40,7 @@ type PSVariable struct {
 	UniqueName   string
 	ShortName    string
 	Count        int
+	Reserved     bool
 }
 
 // PSVariables represents a slice of PSVariable structs that can be
@@ -47,7 +58,6 @@ func (p PSVariables) assignUniqueRandomNames() {
 		panicOnErr(err)
 		p[i].UniqueName = fmt.Sprintf("$~~%s", strings.ToUpper(id.String()))
 	}
-
 	sort.Sort(PSVariablesNameMod(p))
 }
 
@@ -72,6 +82,44 @@ func (p PSVariables) replaceUniqueWithShort(lines []string) {
 	}
 }
 
+// Sort sorts the PSVariable by count.
+func (p PSVariables) Sort() {
+	sort.Sort(p)
+}
+
+// generateShortNames generates short names for all variables making sure
+// the more used variables have the shortest name.
+func (p PSVariables) generateShortNames() {
+
+	var count int
+	var nameIter int
+	for i := 0; i < len(p); i++ {
+		if p[i].Reserved {
+			continue
+		}
+		s := "$" + string(varShortNames[nameIter-(51*count)])
+		if count > 0 {
+			s = s + strconv.Itoa(count-1)
+		}
+
+		p[i].ShortName = s
+
+		if ((nameIter + 1) % 51) == 0 {
+			count++
+		}
+		nameIter++
+	}
+}
+
+// shortenVariables shorts all variables found in lines.
+func (p PSVariables) shortenVariables(lines []string) {
+	p.Sort()
+	p.assignUniqueRandomNames()
+	p.generateShortNames()
+	p.replaceVariablesWithUnique(lines)
+	p.replaceUniqueWithShort(lines)
+}
+
 // PSVariablesNameMod allows sorting based on original name length.
 type PSVariablesNameMod PSVariables
 
@@ -89,11 +137,28 @@ func panicOnErr(e error) {
 }
 
 func main() {
+	pflag.Parse()
+
+	if *cVersion {
+		fmt.Printf("psminimize version %s\n", VERSION)
+		return
+	}
+
+	if *cScriptPath == "" {
+		fmt.Println("no file provided")
+		return
+	}
+	if *cOutputPath == "" {
+		fmt.Println("no output file provided")
+		return
+	}
+
 	var minimizedLines = make([]string, 0, 20)
 	var originalLines = make([]string, 0, 0)
+	var start = time.Now()
 
 	// Reading the file into the original array and duplicate for minimized.
-	f, err := os.Open("sample.ps1")
+	f, err := os.Open(*cScriptPath)
 	panicOnErr(err)
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -113,9 +178,10 @@ func main() {
 
 	//printComparison(originalLines, minimizedLines)
 
-	saveToFile(minimizedLines, "./test.ps1")
+	saveToFile(minimizedLines, *cOutputPath)
 
-	fmt.Printf("minimization complete %d -> %d = %f\n", getLength(originalLines), getLength(minimizedLines), (float64(getLength(minimizedLines)) / float64(getLength(originalLines)) * 100))
+	// fmt.Printf("minimization completed in %d seconds and reduced by %f %d -> %d = %f\n", getLength(originalLines), getLength(minimizedLines), (float64(getLength(minimizedLines)) / float64(getLength(originalLines)) * 100))
+	fmt.Printf("minimization completed in %f seconds and reduced by %f%%\n", time.Since(start).Seconds(), (100 - (float64(getLength(minimizedLines)) / float64(getLength(originalLines)) * 100)))
 }
 
 func getLength(lines []string) int {
@@ -243,54 +309,25 @@ func getVariables(lines []string) PSVariables {
 		}
 	}
 	for k, v := range psVarMap {
-		// Skipping any reserved.
+		p := PSVariable{OriginalName: k, Count: v}
+		// Adding any reserved.
 		_, ok := reservedPSVariables[k]
 		if ok {
-			continue
+			p.Reserved = true
+			p.ShortName = p.OriginalName
 		}
 
-		// Skipping any starting with an escape character.
+		// Making sure we don't replace any escaped sequencing by marking as
+		// reserved.
 		if string(k[0]) == "`" {
-			continue
+			p.Reserved = true
+			p.ShortName = p.OriginalName
 		}
 
-		psVars = append(psVars, PSVariable{OriginalName: k, Count: v})
+		psVars = append(psVars, p)
 	}
 
 	return psVars
-}
-
-// Sort sorts the PSVariable by count.
-func (p PSVariables) Sort() {
-	sort.Sort(p)
-}
-
-// generateShortNames generates short names for all variables making sure
-// the more used variables have the shortest name.
-func (p PSVariables) generateShortNames() {
-
-	var count int
-	for i := 0; i < len(p); i++ {
-		s := "$" + string(varShortNames[i-(51*count)])
-		if count > 0 {
-			s = s + strconv.Itoa(count-1)
-		}
-
-		p[i].ShortName = s
-
-		if ((i + 1) % 51) == 0 {
-			count++
-		}
-	}
-}
-
-// shortenVariables shorts all variables found in lines.
-func (p PSVariables) shortenVariables(lines []string) {
-	p.Sort()
-	p.assignUniqueRandomNames()
-	p.replaceVariablesWithUnique(lines)
-	p.generateShortNames()
-	p.replaceUniqueWithShort(lines)
 }
 
 // getNextShortname returns the next shortname to use. Use 0 for the first call.
@@ -315,6 +352,8 @@ func getNextShortName(lastName byte) byte {
 
 }
 
+// removeExtraSpaces removes any extra spaces around various powershell
+// operators.
 func removeExtraSpaces(lines []string) {
 	for i := range lines {
 		// fmt.Println(lines[i])
@@ -362,6 +401,7 @@ func removeExtraSpaces(lines []string) {
 	}
 }
 
+// removeAllNewLines removes all new lines that adding semicolons as needed.
 func removeAllNewLines(lines []string) []string {
 	minimizedLines := make([]string, 0, len(lines))
 
@@ -377,7 +417,7 @@ func removeAllNewLines(lines []string) []string {
 
 		switch l[len(l)-1:] {
 		// switch lines[i][len(lines[i])-1:] {
-		case "}", "{", "(":
+		case "}", "{", "(", ";":
 
 		case "]":
 			l = l + "\n"
