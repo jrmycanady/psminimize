@@ -13,4 +13,8 @@ psminimize is a simple utility that tries to minimize a powershell script file. 
 |output-path|o|The path to write the script two.|true|
 
 
-
+## Example
+```
+./psminimize -s sample.ps1 -o test.min.ps1
+minimization completed in 0.015845 seconds and reduced by 54.165660%
+```
