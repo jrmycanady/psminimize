@@ -58,7 +58,6 @@ func (p PSVariables) replaceVariablesWithUnique(lines []string) {
 	for i := range lines {
 		lines[i] = strings.ToUpper(lines[i])
 		for j := 0; j < len(p); j++ {
-			// fmt.Println(lines[i])
 			lines[i] = strings.Replace(lines[i], p[j].OriginalName, p[j].UniqueName, -1)
 		}
 	}
@@ -73,6 +72,7 @@ func (p PSVariables) replaceUniqueWithShort(lines []string) {
 	}
 }
 
+// PSVariablesNameMod allows sorting based on original name length.
 type PSVariablesNameMod PSVariables
 
 func (p PSVariablesNameMod) Len() int      { return len(p) }
@@ -107,17 +107,32 @@ func main() {
 
 	shortenAllVariableNames(minimizedLines)
 
-	printComparison(originalLines, minimizedLines)
+	removeExtraSpaces(minimizedLines)
 
-	saveToFile(minimizedLines)
+	minimizedLines = removeAllNewLines(minimizedLines)
+
+	//printComparison(originalLines, minimizedLines)
+
+	saveToFile(minimizedLines, "./test.ps1")
+
+	fmt.Printf("minimization complete %d -> %d = %f\n", getLength(originalLines), getLength(minimizedLines), (float64(getLength(minimizedLines)) / float64(getLength(originalLines)) * 100))
 }
 
-func saveToFile(lines []string) {
-	f, err := os.Create("./test.ps1")
+func getLength(lines []string) int {
+	l := 0
+	for i := range lines {
+		l += len(lines[i])
+	}
+
+	return l
+}
+
+func saveToFile(lines []string, filePath string) {
+	f, err := os.Create(filePath)
 	panicOnErr(err)
 
 	for i := range lines {
-		_, err := f.WriteString(lines[i] + "\n")
+		_, err := f.WriteString(lines[i])
 		panicOnErr(err)
 	}
 }
@@ -297,5 +312,93 @@ func getNextShortName(lastName byte) byte {
 	}
 
 	return lastName
+
+}
+
+func removeExtraSpaces(lines []string) {
+	for i := range lines {
+		// fmt.Println(lines[i])
+		lines[i] = strings.Replace(lines[i], " =", "=", -1)
+		// fmt.Println(lines[i])
+		lines[i] = strings.Replace(lines[i], "= ", "=", -1)
+		lines[i] = strings.Replace(lines[i], " +", "+", -1)
+		lines[i] = strings.Replace(lines[i], "+ ", "+", -1)
+		//lines[i] = strings.Replace(lines[i], " - ", "-", -1)
+		lines[i] = strings.Replace(lines[i], "- ", "-", -1)
+		lines[i] = strings.Replace(lines[i], " *", "*", -1)
+		lines[i] = strings.Replace(lines[i], "* ", "*", -1)
+		lines[i] = strings.Replace(lines[i], " -EQ", "-EQ", -1)
+		lines[i] = strings.Replace(lines[i], "-EQ ", "-EQ", -1)
+		lines[i] = strings.Replace(lines[i], " -GT", "-GT", -1)
+		lines[i] = strings.Replace(lines[i], "-GT ", "-GT", -1)
+		lines[i] = strings.Replace(lines[i], " -LT", "-LT", -1)
+		lines[i] = strings.Replace(lines[i], "-LT ", "-LT", -1)
+		lines[i] = strings.Replace(lines[i], " -NE", "-NE", -1)
+		lines[i] = strings.Replace(lines[i], "-NE ", "-NE", -1)
+		lines[i] = strings.Replace(lines[i], " -LE", "-LE", -1)
+		lines[i] = strings.Replace(lines[i], "-LE ", "-LE", -1)
+		lines[i] = strings.Replace(lines[i], " -GE", "-GE", -1)
+		lines[i] = strings.Replace(lines[i], "-GE ", "-GE", -1)
+		lines[i] = strings.Replace(lines[i], " /", "/", -1)
+		lines[i] = strings.Replace(lines[i], "/ ", "/", -1)
+
+		lines[i] = strings.Replace(lines[i], "( ", "(", -1)
+		lines[i] = strings.Replace(lines[i], " (", "(", -1)
+		lines[i] = strings.Replace(lines[i], " )", ")", -1)
+		lines[i] = strings.Replace(lines[i], ") ", ")", -1)
+
+		lines[i] = strings.Replace(lines[i], "[ ", "[", -1)
+		lines[i] = strings.Replace(lines[i], " [", "[", -1)
+		lines[i] = strings.Replace(lines[i], " ]", "]", -1)
+		lines[i] = strings.Replace(lines[i], "] ", "]", -1)
+
+		lines[i] = strings.Replace(lines[i], "{ ", "{", -1)
+		lines[i] = strings.Replace(lines[i], " {", "{", -1)
+		lines[i] = strings.Replace(lines[i], " }", "}", -1)
+		lines[i] = strings.Replace(lines[i], "} ", "}", -1)
+
+		lines[i] = strings.Replace(lines[i], "; ", ";", -1)
+		lines[i] = strings.Replace(lines[i], " ;", ";", -1)
+	}
+}
+
+func removeAllNewLines(lines []string) []string {
+	minimizedLines := make([]string, 0, len(lines))
+
+	for i := range lines {
+		l := strings.TrimSpace(lines[i])
+		l = strings.TrimSuffix(l, "\n")
+		l = strings.TrimSuffix(l, "\r")
+
+		// skip empty lines
+		if l == "" {
+			continue
+		}
+
+		switch l[len(l)-1:] {
+		// switch lines[i][len(lines[i])-1:] {
+		case "}", "{", "(":
+
+		case "]":
+			l = l + "\n"
+		case "M":
+			// Could be a param, check it out.
+			if len(l) >= 5 {
+				if l[len(l)-5:] == "PARAM" {
+					minimizedLines = append(minimizedLines, l)
+
+					continue
+				}
+			} else {
+				l = l + ";"
+			}
+		default:
+			l = l + ";"
+		}
+		minimizedLines = append(minimizedLines, l)
+
+	}
+
+	return minimizedLines
 
 }
