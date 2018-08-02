@@ -14,7 +14,7 @@ import (
 	"github.com/ogier/pflag"
 )
 
-const VERSION = "1.0"
+const VERSION = "1.0.1"
 
 const (
 	CHARComment byte = 35
@@ -41,6 +41,7 @@ type PSVariable struct {
 	ShortName    string
 	Count        int
 	Reserved     bool
+	SourceLine   string
 }
 
 // PSVariables represents a slice of PSVariable structs that can be
@@ -68,16 +69,21 @@ func (p PSVariables) replaceVariablesWithUnique(lines []string) {
 	for i := range lines {
 		lines[i] = strings.ToUpper(lines[i])
 		for j := 0; j < len(p); j++ {
+			fmt.Println(lines[i])
 			lines[i] = strings.Replace(lines[i], p[j].OriginalName, p[j].UniqueName, -1)
+			fmt.Println(lines[i])
 		}
 	}
 }
 
 // replaceUniqueWithShort replaces all unique variables with the short version.
 func (p PSVariables) replaceUniqueWithShort(lines []string) {
+	sort.Sort(PSVariablesNameMod(p))
 	for i := range lines {
 		for j := range p {
+			// fmt.Println(lines[i])
 			lines[i] = strings.Replace(lines[i], p[j].UniqueName, p[j].ShortName, -1)
+			// fmt.Println(lines[i])
 		}
 	}
 }
@@ -113,11 +119,21 @@ func (p PSVariables) generateShortNames() {
 
 // shortenVariables shorts all variables found in lines.
 func (p PSVariables) shortenVariables(lines []string) {
-	p.Sort()
+	p.print()
 	p.assignUniqueRandomNames()
+	p.print()
 	p.generateShortNames()
+	p.print()
 	p.replaceVariablesWithUnique(lines)
 	p.replaceUniqueWithShort(lines)
+}
+
+func (p PSVariables) print() {
+	for i := range p {
+
+		fmt.Printf("%s => %s => %s\n", p[i].OriginalName, p[i].UniqueName, p[i].ShortName)
+		fmt.Printf("   |%s\n", p[i].SourceLine)
+	}
 }
 
 // PSVariablesNameMod allows sorting based on original name length.
@@ -294,6 +310,7 @@ func getVariables(lines []string) PSVariables {
 	var psVars PSVariables
 	var psVarMap = make(map[string]int)
 	var psVarReg = regexp.MustCompile("[`]?\\$[A-Z0-9a-z_]*")
+	var psVarSource = make(map[string]string)
 
 	for i := range lines {
 		r := psVarReg.FindAllStringSubmatch(lines[i], -1)
@@ -305,11 +322,14 @@ func getVariables(lines []string) PSVariables {
 			for m := range r[j] {
 				varName := strings.ToUpper(r[j][m])
 				psVarMap[varName]++
+				if psVarMap[varName] == 1 {
+					psVarSource[varName] = lines[i]
+				}
 			}
 		}
 	}
 	for k, v := range psVarMap {
-		p := PSVariable{OriginalName: k, Count: v}
+		p := PSVariable{OriginalName: k, Count: v, SourceLine: psVarSource[k]}
 		// Adding any reserved.
 		_, ok := reservedPSVariables[k]
 		if ok {
@@ -324,8 +344,15 @@ func getVariables(lines []string) PSVariables {
 			p.ShortName = p.OriginalName
 		}
 
+		// Ignore empty $ as it's likely a $($var).
+		if k == "$" {
+			continue
+		}
+
 		psVars = append(psVars, p)
 	}
+
+	sort.Sort(PSVariablesNameMod(psVars))
 
 	return psVars
 }
@@ -421,6 +448,8 @@ func removeAllNewLines(lines []string) []string {
 
 		case "]":
 			l = l + "\n"
+		case ",":
+			// nothing is needed for these.
 		case "M":
 			// Could be a param, check it out.
 			if len(l) >= 5 {
