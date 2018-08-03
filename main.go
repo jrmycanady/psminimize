@@ -69,9 +69,9 @@ func (p PSVariables) replaceVariablesWithUnique(lines []string) {
 	for i := range lines {
 		lines[i] = strings.ToUpper(lines[i])
 		for j := 0; j < len(p); j++ {
-			fmt.Println(lines[i])
+			// fmt.Println(lines[i])
 			lines[i] = strings.Replace(lines[i], p[j].OriginalName, p[j].UniqueName, -1)
-			fmt.Println(lines[i])
+			// fmt.Println(lines[i])
 		}
 	}
 }
@@ -119,11 +119,11 @@ func (p PSVariables) generateShortNames() {
 
 // shortenVariables shorts all variables found in lines.
 func (p PSVariables) shortenVariables(lines []string) {
-	p.print()
+	// p.print()
 	p.assignUniqueRandomNames()
-	p.print()
+	// p.print()
 	p.generateShortNames()
-	p.print()
+	// p.print()
 	p.replaceVariablesWithUnique(lines)
 	p.replaceUniqueWithShort(lines)
 }
@@ -210,6 +210,8 @@ func getLength(lines []string) int {
 }
 
 func saveToFile(lines []string, filePath string) {
+	fmt.Printf("saving to: %s\n", filePath)
+
 	f, err := os.Create(filePath)
 	panicOnErr(err)
 
@@ -444,7 +446,7 @@ func removeAllNewLines(lines []string) []string {
 
 		switch l[len(l)-1:] {
 		// switch lines[i][len(lines[i])-1:] {
-		case "}", "{", "(", ";":
+		case "{", "(", ";":
 
 		case "]":
 			l = l + "\n"
